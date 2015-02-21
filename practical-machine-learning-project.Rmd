@@ -1,0 +1,108 @@
+---
+title: "Practical Machine Learning - Project"
+author: "Mikel Madina"
+date: "Friday, February 20, 2015"
+output: html_document
+---
+
+## Background
+
+> Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+> What you should submit: The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+## Load data
+```{r, cache = TRUE}
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv","training.csv", mode="wb")
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv","testing.csv", mode="wb")
+training <- read.csv("training.csv", na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv("testing.csv", na.strings=c("NA","#DIV/0!",""))
+```
+
+## Preprocessing
+
+### Dealing with NA's
+First of all, let's check the proportion of NA values for each variable.
+```{r}
+# calculate NA percentage for each variable
+nacount <- as.data.frame(apply(training,2,function(x) {sum(is.na(x))/(dim(training)[1])}))
+colnames(nacount) <- "count"
+nas <- data.frame(var = rownames(nacount), count = nacount$count)
+nas
+```
+There are two kinds of variables:
+
+- Variables whithout NA values
+- Variables with NA values. In this case, the minimum proportion of NA values is 97.93% of the rows, i.e. the percent of valid rows is lower than 2.5%. We will dismiss these variables.
+
+```{r}
+delete <- as.character(nas[which(nas$count > 0),1])
+deleteVars <- names(training) %in% delete
+training <- training[!deleteVars]
+```
+These are the variables we will use for our prediction model:       
+```{r}
+colnames(training)
+```
+### Imputing data
+Since the variables we kept in the previous step have a NA proportion of 0, there is no need to imput data. 
+
+### Possible confounding variables
+
+There are some variables not related to the body movements we are using to predict the activity, so we will dismiss them in order not to confound the prediction model.
+
+- X
+- user_name
+- raw_timestamp_part_1
+- raw_timestamp_part_2
+- cvtd_timestamp
+- new_window
+- num_window
+
+```{r}
+training <- training[,8:60]
+```
+### check nearZeroVar
+
+Now, we will check for variables with near zero variation.
+
+```{r}
+library(caret)
+nsv <- nearZeroVar(training,saveMetrics=TRUE)
+nsv
+```
+There is no such variable, so we will not perform any action.
+
+## Prediction model and model evaluation
+
+### Cross-validation using K-folds
+
+For the cross-validation we will use 10 K-folds.
+
+```{r}
+train_control <- trainControl(method="cv", number=10)
+```
+
+### Decision trees
+Classification or decision trees are non-linear models that are easy to interpret, so we will try this method first.
+
+```{r, cache = TRUE}
+set.seed(12345)
+modelDT <- train(classe ~., data=training, trControl=train_control, method="rpart")
+predictions <- predict(modelDT, newdata=training)
+print(confusionMatrix(predictions, training$classe), digits=4)
+```
+The accuracy level is too low, we will not use this model.
+
+### Random forests
+Random forests are more accurate than decission trees, but more difficult to interpret. Nevertheless, we need a more accurate prediction model, so we will give it a try.
+
+```{r, cache = TRUE}
+modelRF <- train(classe ~., data=training, trControl=train_control, method="rf")
+predictions <- predict(modelRF, newdata=training)
+print(confusionMatrix(predictions, training$classe), digits=4)
+```
+The accuracy level for our new model is 1, so we can suspect we are dealing with an overfitted model. We will make the predictions for the testing data and check them out in the automated grading tool.
+
+
+The obtained score is 20/20, so we will conclude that the prediction model obtained using the random forests method is appropriate.
